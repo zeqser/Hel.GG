@@ -1,0 +1,204 @@
+local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
+
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+local Window = Library:CreateWindow({
+    Title = 'Hel',
+    Center = false,
+    AutoShow = true,
+    TabPadding = 8,
+    MenuFadeTime = 0.2
+})
+
+local Tabs = {
+    Main = Window:AddTab('Rage'),
+    Character = Window:AddTab('Characters'),  -- Ensure Character tab is defined here
+    ['UI Settings'] = Window:AddTab('UI Settings'),
+}
+
+-- Aimbot groupbox
+local LeftGroupBox = Tabs.Main:AddLeftGroupbox('Aimbot')
+
+LeftGroupBox:AddToggle('MyToggle', {
+    Text = 'Aimbot (C)',
+    Default = false,
+    Tooltip = 'Aimbot',
+
+    Callback = function(Value)
+        local Players = game:GetService("Players")
+        local RunService = game:GetService("RunService")
+        local UserInputService = game:GetService("UserInputService")
+        local Workspace = game:GetService("Workspace")
+
+        local LocalPlayer = Players.LocalPlayer
+        local Camera = Workspace.CurrentCamera
+
+        -- Configurable Settings
+        local LOCK_KEY = Enum.KeyCode.C
+        local MAX_DISTANCE = 150
+        local FOV_RADIUS = 300 -- screen pixels
+        local AUTO_UNLOCK_DISTANCE = 200
+        local SMOOTHNESS = 0.77
+
+        -- Internal State
+        local currentTarget = nil
+        local isLocked = false
+
+        -- Helper: Get screen position and check if on screen
+        local function getScreenPosition(worldPosition)
+            local screenPos, onScreen = Camera:WorldToViewportPoint(worldPosition)
+            return screenPos, onScreen
+        end
+
+        -- Helper: Get closest target based on distance + FOV
+        local function getBestTarget()
+            local closestPlayer = nil
+            local closestScore = math.huge
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = player.Character.HumanoidRootPart
+                    local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local distance = (hrp.Position - Camera.CFrame.Position).Magnitude
+                        if distance <= MAX_DISTANCE then
+                            local screenPos, onScreen = getScreenPosition(hrp.Position)
+                            if onScreen then
+                                local mousePos = UserInputService:GetMouseLocation()
+                                local distFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+                                if distFromCenter <= FOV_RADIUS then
+                                    local score = distFromCenter + distance * 0.5
+                                    if score < closestScore then
+                                        closestScore = score
+                                        closestPlayer = player
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            return closestPlayer
+        end
+
+        -- Lock-on toggle logic
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.KeyCode == LOCK_KEY then
+                if isLocked then
+                    print("🔓 Unlocked from:", currentTarget and currentTarget.Name or "None")
+                    isLocked = false
+                    currentTarget = nil
+                else
+                    local newTarget = getBestTarget()
+                    if newTarget then
+                        currentTarget = newTarget
+                        isLocked = true
+                        print("🔒 Locked onto:", currentTarget.Name)
+                    else
+                        print("⚠️ No valid target found.")
+                    end
+                end
+            end
+        end)
+
+        -- Update each frame (with smooth camlock)
+        RunService.RenderStepped:Connect(function()
+            if isLocked and currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = currentTarget.Character.HumanoidRootPart
+                local humanoid = currentTarget.Character:FindFirstChildWhichIsA("Humanoid")
+
+                if not humanoid or humanoid.Health <= 0 then
+                    isLocked = false
+                    currentTarget = nil
+                    print("⚠️ Target died. Unlocked.")
+                    return
+                end
+
+                local dist = (hrp.Position - Camera.CFrame.Position).Magnitude
+                if dist > AUTO_UNLOCK_DISTANCE then
+                    isLocked = false
+                    currentTarget = nil
+                    print("⚠️ Target out of range. Unlocked.")
+                    return
+                end
+
+                -- ✅ Smooth Camera Lock
+                local camPos = Camera.CFrame.Position
+                local currentLook = Camera.CFrame.LookVector
+                local targetDir = (hrp.Position - camPos).Unit
+
+                local smoothedDir = currentLook:Lerp(targetDir, SMOOTHNESS)
+                Camera.CFrame = CFrame.new(camPos, camPos + smoothedDir)
+            end
+        end)
+    end
+})
+
+-- Arguments: Text, DoesWrap
+LeftGroupBox:AddLabel('More Coming Soon! Since beta.')
+
+-- Groupbox:AddDivider
+-- Arguments: None
+LeftGroupBox:AddDivider()
+
+local TabBox = Tabs.Main:AddRightTabbox() 
+local Tab1 = TabBox:AddTab('Strafe')
+local Tab2 = TabBox:AddTab('Coming soon!')
+
+-- Character groupbox (for speed and jump boost)
+local CharacterGroupBox = Tabs.Character:AddLeftGroupbox('Speed / Jump')
+
+-- Add Speed Slider inside the Character tab
+CharacterGroupBox:AddSlider('Speed', {
+    Text = 'Change Speed',
+    Default = 16,
+    Min = 16,
+    Max = 500,
+    Rounding = 1,
+    Compact = false,
+
+    Callback = function(Value)
+        print('[cb] Speed changed to:', Value)
+        
+        -- Change player's WalkSpeed based on slider value
+        local player = game.Players.LocalPlayer
+        if player and player.Character and player.Character:FindFirstChildOfClass('Humanoid') then
+            player.Character:FindFirstChildOfClass('Humanoid').WalkSpeed = Value
+        end
+    end
+})
+
+-- Add Jump Boost Slider inside the Character tab
+CharacterGroupBox:AddSlider('JumpBoost', {
+    Text = 'Change Jump Power',
+    Default = 50,
+    Min = 50,
+    Max = 200,
+    Rounding = 1,
+    Compact = false,
+
+    Callback = function(Value)
+        print('[cb] Jump Power changed to:', Value)
+        
+        -- Change player's JumpPower based on slider value
+        local player = game.Players.LocalPlayer
+        if player and player.Character and player.Character:FindFirstChildOfClass('Humanoid') then
+            player.Character:FindFirstChildOfClass('Humanoid').JumpPower = Value
+        end
+    end
+})
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+ThemeManager:SetFolder('MyScriptHub')
+SaveManager:SetFolder('MyScriptHub/specific-game')
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+SaveManager:LoadAutoloadConfig()
